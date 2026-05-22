@@ -35,6 +35,13 @@ enabled for the `--platform linux/amd64` build and run commands.
 
 `VALUE_POS` in `mujoco_sysid_bug.py` is the knob. Use `1e-8` for the degraded near-zero-bound case and `--positive-dynamics none` for the all-`VALUE_ZERO` groundtruth case.
 
+Run the all-zero groundtruth case with default OpenBLAS threading:
+
+```bash
+docker run --rm --platform linux/amd64 mujoco-sysid-bug \
+	python mujoco_sysid_bug.py --positive-dynamics none
+```
+
 Run the all-zero groundtruth case with single-threaded OpenBLAS:
 
 ```bash
