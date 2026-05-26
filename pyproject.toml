@@ -1,0 +1,24 @@
+[project]
+name = "mujoco-sysid-3284"
+version = "0.1.0"
+description = "Analysis of mujoco/issues/3284: sysid conditioning, identifiability, and excitation design on a 7-dof arm."
+requires-python = ">=3.12"
+dependencies = [
+    "mujoco==3.8.1",
+    "numpy",
+    "scipy",
+    # Needed just to `import mujoco.sysid` (its __init__ pulls in the report module).
+    "colorama",
+    "tabulate",
+    "pyyaml",
+    "jinja2",
+    "plotly",
+    "matplotlib",
+]
+
+[tool.ruff]
+indent-width = 2
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

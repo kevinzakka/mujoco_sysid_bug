@@ -1,6 +1,0 @@
-.git/
-__pycache__/
-*.py[cod]
-*.swp
-*~
-.DS_Store
