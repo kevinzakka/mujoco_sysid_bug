@@ -5,7 +5,7 @@ This repository analyzes the system-identification issue reported in
 the `mujoco.sysid` optimizer's final residual depends substantially on the
 OpenBLAS thread count.
 
-We find four largely independent things:
+We find three largely independent things:
 
 1. The thread dependence is a consequence of numerical ill-conditioning, not a
    defect in OpenBLAS. The Gauss-Newton Hessian is numerically singular at every
@@ -15,10 +15,7 @@ We find four largely independent things:
 2. The benchmark is ill-posed independently of the optimizer: the true parameters
    lie outside the imposed bounds, and the inertial parameters are not
    identifiable from joint measurements.
-3. The reporter's original trajectories under-excite the distal joints (joint7's
-   root-mean-square velocity is `~0.0009 rad/s`), so they cannot be identified
-   from that data; a designed slow+fast excitation recovers them.
-4. Starting damping and frictionloss at their `1e-8` lower bound makes the
+3. Starting damping and frictionloss at their `1e-8` lower bound makes the
    optimizer fail on some trajectory realizations on both backends; an interior
    start fixes it and the two backends become indistinguishable.
 
@@ -27,14 +24,14 @@ parameter recovery against that ground truth. The residual is not a reliable
 proxy for recovery: section 2 exhibits a near-zero residual together with
 order-of-magnitude parameter errors. Identification below uses
 `scipy_parallel_fd` for the parameter scaling that addresses (1); with the
-interior initialization in (4), the default mujoco backend converges identically
+interior initialization in (3), the default mujoco backend converges identically
 (section 4).
 
 ## Usage
 
 ```bash
 uv sync
-uv run a1_conditioning.py  # optional size args, e.g. a3_recovery.py 5 1200 150
+uv run a1_conditioning.py  # optional size args, e.g. a3_recovery.py 10 1200 150
 ```
 
 | script | result |
@@ -43,8 +40,8 @@ uv run a1_conditioning.py  # optional size args, e.g. a3_recovery.py 5 1200 150
 | `a2_bounds.py` | the true inertials lie outside the optimization bounds |
 | `a3_recovery.py` | with feasible bounds the residual reaches ~0 while the inertia is wrong by orders of magnitude |
 | `a4_regularization.py` | a light prior toward CAD makes the inertials physical (realistic benchmark) |
-| `a5_excitation.py` | the distal joints are under-excited; the friction/inertia speed tradeoff |
-| `a6_excitation_design.py` | a combined slow+fast excitation recovers every parameter |
+| `a5_excitation.py` | per-joint sensitivity gain (baseline vs designed); friction/inertia speed tradeoff |
+| `a6_excitation_design.py` | per-design worst-determined-parameter table; recovery with a synthetic slow+fast mix |
 | `a7_initialization.py` | starting damping/frictionloss at the 1e-8 lower bound makes the solve fail on both backends; an interior start fixes it |
 
 `common.py` builds the reporter's benchmark from the model files; `realistic.py`
@@ -62,24 +59,24 @@ factorizes each iteration, is numerically singular:
 
 ```
 field           cond(J)     cond(J^T J)   cond(J^T J) after per-column scaling
-none            6.73e9      4.53e19       4.23e15
-armature        6.73e9      4.53e19       3.98e15
-damping         6.24e9      3.89e19       4.07e15
-frictionloss    6.83e9      4.67e19       4.03e15
+none            2.03e9      4.12e18       6.48e14
+armature        1.98e9      3.92e18       4.56e14
+damping         2.14e9      4.58e18       6.77e14
+frictionloss    2.19e9      4.80e18       6.32e14
 ```
 
 Double precision resolves condition numbers up to about `1e16`, so
-`cond(J^T J) ~ 4.5e19` means `J^T J` is numerically singular and its
+`cond(J^T J) ~ 4e18` means `J^T J` is numerically singular and its
 factorization is determined by rounding. Forming `J^T J` under two different
 summation orders, which is what changing the BLAS thread count does, changes it
-by `1.9e-15`, yet the regularized step changes by 12 percent at the small
+by `9.2e-15`, yet the regularized step changes by 7 percent at the small
 regularizer used early in the solve:
 
 ```
 mu        ||step||   relative step change (raw)   relative step change (scaled)
-1e-6      3.2e3      1.2e-1                        1.9e-8
-1e-3      1.9e1      2.0e-4                        1.7e-11
-1.0       5.0e0      2.8e-7                        1.9e-14
+1e-6      3.0e4      7.2e-2                        5.0e-8
+1e-3      8.2e2      5.8e-3                        2.9e-11
+1.0       1.5e1      4.7e-6                        3.1e-14
 ```
 
 Per-column scaling reduces `cond(J^T J)` by about four orders of magnitude and the
@@ -101,14 +98,14 @@ joint-dynamics truths lie inside their bounds. The inertials are therefore
 unreachable as posed.
 
 **The inertials are not identifiable from joint data.** With feasible (wide)
-bounds the optimizer fits the data to a residual of `~3e-11`, while the inertials
-are wrong by orders of magnitude:
+bounds the optimizer fits the data to a residual of `~1.6e-3`, while the
+inertials are wrong by orders of magnitude:
 
 ```
 damping:       all 7 joints recovered to 0%
 frictionloss:  all 7 joints recovered to 0%
-armature:      joints 3-7 to 0%; joints 1 and 2 wrong by 83% and 29%
-inertia trace: wrong by up to ~2300%
+armature:      joints 3-7 to 0%; joints 1 and 2 wrong by 72% and 16%
+inertia trace: wrong by up to ~2600%
 ```
 
 This is observational equivalence: many inertial parameter sets produce identical
@@ -120,67 +117,34 @@ joints it is confounded with the link inertia.
 ### 3. Identification on a realistic benchmark
 
 The reporter's synthetic truth is far from CAD. `realistic.py` instead perturbs
-CAD within physical tolerances, so CAD is a usable prior, as on a real robot. The
-section builds up in three steps: a prior is necessary but not sufficient (a4),
-the original trajectories are diagnosed as the limiting factor (a5), and a better
-excitation closes the gap (a6).
+CAD within physical tolerances, so CAD is a usable prior, as on a real robot.
 
-**A prior is not enough on the original trajectories (a4).** Identifying on the
-reporter's trajectories with a light MAP prior, inertia toward CAD, armature
-toward its theoretical value, damping and frictionloss free, makes the inertials
-physical instead of unconstrained and removes the armature/inertia confound, while
-the data drives the well-excited proximal dynamics to the truth. But the distal
-joints stay wrong (joint7 damping off by about 290 percent and frictionloss by
-orders of magnitude), because the original trajectories barely move them. The
-prior cannot manufacture information the data does not contain.
+**Recovery with a CAD prior (a4).** Identifying on the reporter's full
+10-trajectory dataset with a light MAP prior (inertia toward CAD, armature
+toward its theoretical value, damping and frictionloss free) gives a clean
+recovery: data residual `~0.45`, dynamics within `~10%` on most joints (joint5
+damping is the outlier at `~57%`), and the inertials sit near the prior as
+expected (mass within `~37%`, center of mass within `~0.03 m`). The inertials
+remain non-identifiable in absolute terms; the prior provides the outside
+information that anchors them. This recovery requires initializing damping
+and frictionloss in the interior of their bounds (section 4) on either
+backend.
 
-**Diagnosing the excitation (a5).** The original trajectories leave the distal
-joints under-excited; joint7's root-mean-square velocity is `~0.0009 rad/s`, about
-400 times smaller than joint1's. Different parameters also require different
-motion: frictionloss is observable only where a joint passes through velocity
-reversals at low speed, whereas damping and armature require fast motion. A speed
-sweep confirms this, friction sensitivity falls and damping sensitivity rises with
-speed. A single-speed experiment cannot make every parameter observable.
+> **Correction.** An earlier version of this section claimed the reporter's
+> original trajectories under-excite the distal joints (joint7 RMS =
+> `0.0009 rad/s`, "400 times smaller than joint1") and argued that a
+> designed slow+fast excitation was needed to recover them. That was an
+> artifact of `a4` and `a5` defaulting to a small `N_TRAJ` which loaded
+> only the slow half of the dataset (`traj1.npz`-`traj5.npz`). The
+> reporter's full set (`traj1.npz`-`traj10.npz`) is a deliberate mix of
+> slow and fast trajectories; joint7 baseline RMS on the full set is
+> `0.57 rad/s`, comparable to the other joints. The script defaults now
+> load `N_TRAJ=10`.
 
-**Choosing a better excitation (a6).** This is design by selection among
-candidate trajectories, not numerical optimal input design: we do not optimize a
-trajectory parameterization against an information criterion (future work). We
-instead construct
-a few candidate designs (all-fast multisines, all-slow sinusoids, and a slow+fast
-mix) and compare them by the parameter each one determines worst. The table
-reports, per design, the smallest sensitivity among the friction, damping, and
-armature parameters (higher is better; the best design is the one whose worst
-entry is largest). An all-fast design starves friction, an all-slow design starves
-damping and armature, and only the combination keeps all three observable:
-
-```
-design     min friction   min damping   min armature
-all-fast   0.13           0.63          0.46      (friction starved)
-all-slow   0.18           0.19          0.13      (damping and armature starved)
-mix        0.16           0.61          0.45      (worst entry largest)
-```
-
-(The usual D-optimality criterion, which maximizes total information volume, is
-misleading here: it is dominated by the well-excited directions and actually
-prefers the all-fast design that leaves friction unidentified.)
-
-Re-identifying with the selected slow+fast mix and the light prior, recovery
-against the truth is consistent across five trajectory seeds (a7): worst-joint
-damping `4-15 %` (mean 8), armature within `~10 %`, frictionloss `8-23 %`
-(mean ~15), and the inertials physical (mass within `~30 %`, center of mass within
-about `0.05 m`). The single-seed numbers in earlier drafts (8 / 11 / 19 percent)
-were one favorable realization; the multi-seed figures above are the honest
-picture. This recovery requires initializing damping and frictionloss in the
-interior of their bounds (section 4) on either backend.
-
-The dynamics, which the excitation targets, are recovered to within ~20 percent
-on the worst joint and a few percent on most. The larger inertial errors are
-expected rather than a failure of the estimator: those directions are weakly
-identifiable and rely on the prior, which here is centered on CAD about one to
-two standard deviations from the (synthetic) truth, so the gap measures that
-prior-to-truth distance. On hardware the truth is unknown and CAD is the best
-available estimate, so holding the unidentifiable directions at CAD is the
-intended behavior.
+`a5` and `a6` remain as supplementary scripts: `a5` reports per-joint
+sensitivity gains between the baseline and a designed multisine, plus a
+sensitivity-vs-speed sweep; `a6` compares all-fast / all-slow / mix designs
+by worst-determined parameter and re-identifies with the mix.
 
 ### 4. Initialization at the parameter boundary breaks the solve
 
@@ -222,5 +186,5 @@ observed there, on top of the conditioning in (1).
 
 The symptom in #3284, a final residual changing dramatically with
 `OPENBLAS_NUM_THREADS`, is the compound expression of the singular `J^T J` in
-(1) and the boundary initialization here in (4); either fix reduces it
+(1) and the boundary initialization here in (3); either fix reduces it
 independently, and together they remove it.

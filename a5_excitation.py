@@ -18,7 +18,7 @@ from mujoco import sysid
 import common as C
 import realistic as B
 
-N_TRAJ = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+N_TRAJ = int(sys.argv[1]) if len(sys.argv) > 1 else 10
 N_STEPS = int(sys.argv[2]) if len(sys.argv) > 2 else 800
 N_HARM = 6
 EPS = np.finfo(np.float64).eps ** 0.5

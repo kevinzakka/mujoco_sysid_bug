@@ -12,7 +12,7 @@ import numpy as np
 
 import common as C
 
-N_TRAJ = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+N_TRAJ = int(sys.argv[1]) if len(sys.argv) > 1 else 10
 N_STEPS = int(sys.argv[2]) if len(sys.argv) > 2 else 800
 
 print(f"=== A1. Conditioning at the start point ({N_TRAJ} traj x {N_STEPS} steps) ===\n")

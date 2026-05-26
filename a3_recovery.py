@@ -13,7 +13,7 @@ from mujoco import sysid
 
 import common as C
 
-N_TRAJ = int(sys.argv[1]) if len(sys.argv) > 1 else 5
+N_TRAJ = int(sys.argv[1]) if len(sys.argv) > 1 else 10
 N_STEPS = int(sys.argv[2]) if len(sys.argv) > 2 else 1200
 ITERS = int(sys.argv[3]) if len(sys.argv) > 3 else 150
 
